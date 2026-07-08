@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>交通标识识别调度系统</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f5f7fa; padding: 20px; }
+        .container { max-width: 1000px; margin: auto; }
+        .card { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .btn { background: #3498db; color: white; border: none; padding: 8px 16px; border-radius: 5px; cursor: pointer; }
+        .btn:hover { background: #2980b9; }
+        .status-box { padding: 15px; background: #e8f4fd; border-left: 4px solid #3498db; border-radius: 4px; margin-top: 15px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 10px; border-bottom: 1px solid #ddd; text-align: left; }
+        th { background-color: #f8f9fa; }
+        img.thumb { width: 60px; height: 60px; object-fit: cover; border-radius: 4px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>🚦 交通标识批量识别调度系统</h2>
+
+    <div class="card">
+        <h3>1. 批量导入图片入队</h3>
+        <input type="file" id="batchInput" accept="image/*" multiple>
+        <button class="btn" onclick="submitBatch()">批量上传并加入队列</button>
+        
+        <div class="status-box">
+            <h4>🔄 队列调度状态 (实时更新)</h4>
+            <p>正在处理的任务: <strong id="currentTask" style="color: #e74c3c;">无</strong></p>
+            <p>队列中等待的任务数 (队首待命): <strong id="queueSize">0</strong></p>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>2. 历史识别记录库 (数据库持久化)</h3>
+        <input type="text" id="searchInput" placeholder="输入标签名或文件名搜索..." style="padding: 6px; width: 250px;">
+        <button class="btn" onclick="fetchHistory()">搜索历史</button>
+        <button class="btn" onclick="fetchHistory('')" style="background:#95a5a6;">显示全部</button>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>缩略图</th>
+                    <th>原文件名</th>
+                    <th>识别结果 (Label)</th>
+                    <th>置信度</th>
+                    <th>处理时间</th>
+                </tr>
+            </thead>
+            <tbody id="historyTableBody">
+                </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    // ==========================================
+    // 考核点 2：批量提交与状态轮询
+    // ==========================================
+    async function submitBatch() {
+        const input = document.getElementById('batchInput');
+        if (input.files.length === 0) return alert("请至少选择一张图片！");
+
+        const formData = new FormData();
+        // 循环将多张图片添加到 FormData
+        for (let i = 0; i < input.files.length; i++) {
+            formData.append('files', input.files[i]);
+        }
+
+        try {
+            const res = await fetch('/upload_batch', { method: 'POST', body: formData });
+            const data = await res.json();
+            alert(data.message);
+            input.value = ""; // 清空选择框
+        } catch (e) {
+            alert("上传失败！");
+        }
+    }
+
+    // 设置定时器，每 1 秒向后端请求一次队列状态
+    setInterval(async () => {
+        try {
+            const res = await fetch('/queue_status');
+            const data = await res.json();
+            
+            document.getElementById('queueSize').innerText = data.queue_size;
+            document.getElementById('currentTask').innerText = data.current_task ? data.current_task : "无 (队列空闲)";
+            
+            // 如果刚从忙碌变成空闲，自动刷新一下历史记录列表
+            if (data.is_idle && window.lastStatusWasBusy) {
+                fetchHistory();
+            }
+            window.lastStatusWasBusy = !data.is_idle;
+            
+        } catch (e) { console.error("状态获取失败", e); }
+    }, 1000);
+
+    // ==========================================
+    // 考核点 4：查找历史识别结果
+    // ==========================================
+    async function fetchHistory(forceKeyword) {
+        // 如果传入了参数就用参数，否则读取输入框的值
+        const keyword = forceKeyword !== undefined ? forceKeyword : document.getElementById('searchInput').value;
+        
+        try {
+            const res = await fetch(`/history?keyword=${keyword}`);
+            const data = await res.json();
+            
+            const tbody = document.getElementById('historyTableBody');
+            tbody.innerHTML = ""; // 清空旧数据
+
+            if(data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;">暂无匹配的历史记录</td></tr>`;
+                return;
+            }
+
+            data.forEach(item => {
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${item.id}</td>
+                        <td><a href="${item.result_img_path}" target="_blank">
+                                <img src="${item.result_img_path}" class="thumb" alt="result">
+                            </a>
+                        </td>
+                        <td>${item.filename}</td>
+                        <td style="font-weight:bold;">${item.label}</td>
+                        <td>${item.confidence}</td>
+                        <td><small>${item.time}</small></td>
+                    </tr>
+                `;
+            });
+        } catch (e) { console.error("获取历史失败", e); }
+    }
+
+    // 页面加载完毕后，默认拉取一次历史记录
+    window.onload = () => fetchHistory('');
+</script>
+
+</body>
+</html>
