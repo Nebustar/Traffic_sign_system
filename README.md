@@ -1,1 +1,1 @@
-# lza is a joker
+# 把废弃代码标出来
