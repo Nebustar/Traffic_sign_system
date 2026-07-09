@@ -180,5 +180,41 @@ def get_history():
         })
     return jsonify(results)
 
+@app.route('/history/<int:record_id>', methods = ['DELETE'])
+def delete_single_history(record_id):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    
+    c.execute("SELECT result_img_path FROM records WHERE id = ?", (record_id))
+    row = c.fetchone()
+    if row:
+        filepath = row[0].lstrip('/')
+        if os.path.exists(filepath):
+            os.remove(filepath)
+            
+    c.execute("DELETE FROM records WHERE id = ?", (record_id))
+    conn.commit()
+    conn.close()
+    
+    return jsonify({"message": f"记录 {record_id} 已成功删除"})
+
+@app.route('/history/all', methods = ['DELETE'])
+def delete_all_history():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    
+    for filename in os.listdir(app.config['OUTPUT_FOLDER']):
+        filepath = os.path.join(app.config['OUTPUT_FOLDER'], filename)
+        if os.path.isfile(filepath):
+            os.remove(filepath)
+            
+    c.execute("DELETE FROM records")
+    c.execute("DELETE FROM sqlite_sequence WHERE name = 'records'")
+    
+    conn.commit()
+    conn.close()
+    
+    return jsonify({"message": "已清空所有历史记录"}) 
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000, use_reloader=False) # 关闭 reloader 防止线程被启动两次
