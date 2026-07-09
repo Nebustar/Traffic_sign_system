@@ -52,7 +52,7 @@ def init_db():
     c = conn.cursor()
     c.execute('''
         CREATE TABLE IF NOT EXISTS records (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id INTEGER PRIMARY KEY,
             filename TEXT,
             label TEXT,
             confidence TEXT,
@@ -76,7 +76,6 @@ def save_to_db(filename, label, confidence, result_path):
 # 核心业务逻辑与后台调度
 # ==========================================
 def mock_detect_and_annotate(input_path, filename):
-    """模拟检测功能（与之前一致，略作精简）"""
     img = cv2.imread(input_path)
     h, w, _ = img.shape
     xmin, ymin = int(w * 0.25), int(h * 0.25)
@@ -180,23 +179,40 @@ def get_history():
         })
     return jsonify(results)
 
-@app.route('/history/<int:record_id>', methods = ['DELETE'])
+@app.route('/history/<int:record_id>', methods=['DELETE'])
 def delete_single_history(record_id):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    
-    c.execute("SELECT result_img_path FROM records WHERE id = ?", (record_id))
-    row = c.fetchone()
-    if row:
-        filepath = row[0].lstrip('/')
-        if os.path.exists(filepath):
-            os.remove(filepath)
-            
-    c.execute("DELETE FROM records WHERE id = ?", (record_id))
-    conn.commit()
-    conn.close()
-    
-    return jsonify({"message": f"记录 {record_id} 已成功删除"})
+    """防崩升级版：删除单条历史记录"""
+    try:
+        import os # 稳妥起见，直接在函数内部也确保引入 os
+        
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        
+        # 1. 查找图片路径
+        c.execute("SELECT result_img_path FROM records WHERE id = ?", (record_id,))
+        row = c.fetchone()
+        
+        # 修复点 1：增加严格的非空判断，防止 Null 导致 lstrip 崩溃
+        if row and row[0]:
+            filepath = row[0].lstrip('/') 
+            if os.path.exists(filepath):
+                try:
+                    os.remove(filepath) # 尝试物理删除
+                except Exception as file_err:
+                    # 修复点 2：即使文件删不掉（比如被占用），也只是打印警告，不让整个接口崩溃
+                    print(f"硬盘文件删除失败 (可能被占用): {file_err}")
+
+        # 2. 执行 SQL 删除动作
+        c.execute("DELETE FROM records WHERE id = ?", (record_id,))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"status": "success", "message": f"记录 {record_id} 已成功删除"})
+
+    except Exception as e:
+        # 修复点 3：如果发生任何未知恶性错误，捕获它并在后台终端打印出来
+        print(f"后端删除接口发生致命崩溃: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/history/all', methods = ['DELETE'])
 def delete_all_history():
