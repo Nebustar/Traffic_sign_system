@@ -6,6 +6,8 @@ import time
 from flask import Flask, render_template, request, jsonify
 from werkzeug.utils import secure_filename
 
+from Model.predict import detect_and_annotate
+
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
 app.config['OUTPUT_FOLDER'] = 'static/outputs'
@@ -75,7 +77,9 @@ def save_to_db(filename, label, confidence, result_path):
 # ==========================================
 # 核心业务逻辑与后台调度
 # ==========================================
+'''
 def mock_detect_and_annotate(input_path, filename):
+    """模拟检测功能（与之前一致，略作精简）"""
     img = cv2.imread(input_path)
     h, w, _ = img.shape
     xmin, ymin = int(w * 0.25), int(h * 0.25)
@@ -89,6 +93,12 @@ def mock_detect_and_annotate(input_path, filename):
     output_path = os.path.join(app.config['OUTPUT_FOLDER'], filename)
     cv2.imwrite(output_path, img)
     return label, confidence, f"/{output_path}"
+
+'''
+def mock_detect_and_annotate(input_path,filename): # 模型适配，Line9 from Model.predict import detect_and_annotate
+    output_path=os.path.join(app.config['OUTPUT_FOLDER'],filename)
+    label,confidence=detect_and_annotate(input_path,output_path)
+    return label,confidence,f"/{output_path}"
 
 def queue_worker():
     """后台工作线程：不断检查队列，有任务就出队处理"""
@@ -131,8 +141,7 @@ def index():
 
 @app.route('/upload_batch', methods=['POST'])
 def upload_batch():
-    """接收批量上传的文件并全部入队"""
-    files = request.files.getlist('files') # 获取多个文件
+    files = request.files.getlist('files')
     if not files or files[0].filename == '':
         return jsonify({"error": "未选择文件"}), 400
 
@@ -143,7 +152,6 @@ def upload_batch():
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(filepath)
             
-            # 任务入队
             image_queue.enqueue({"filename": filename, "filepath": filepath})
             enqueued_count += 1
             
@@ -151,21 +159,17 @@ def upload_batch():
 
 @app.route('/queue_status', methods=['GET'])
 def queue_status():
-    """供前端实时查询队列调度状态"""
     return jsonify({
         "queue_size": image_queue.get_size(),
         "current_task": current_processing_task,
         "is_idle": image_queue.is_empty() and current_processing_task is None
     })
 
-# 考核点 4：查找历史记录
 @app.route('/history', methods=['GET'])
 def get_history():
-    """根据关键字模糊查询历史记录"""
     keyword = request.args.get('keyword', '')
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    # 模糊匹配文件名或标签名
     c.execute("SELECT id, filename, label, confidence, result_img_path, create_time FROM records WHERE filename LIKE ? OR label LIKE ? ORDER BY create_time DESC", 
               (f'%{keyword}%', f'%{keyword}%'))
     rows = c.fetchall()
@@ -181,28 +185,21 @@ def get_history():
 
 @app.route('/history/<int:record_id>', methods=['DELETE'])
 def delete_single_history(record_id):
-    """防崩升级版：删除单条历史记录"""
     try:
-        import os # 稳妥起见，直接在函数内部也确保引入 os
-        
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         
-        # 1. 查找图片路径
         c.execute("SELECT result_img_path FROM records WHERE id = ?", (record_id,))
         row = c.fetchone()
         
-        # 修复点 1：增加严格的非空判断，防止 Null 导致 lstrip 崩溃
         if row and row[0]:
             filepath = row[0].lstrip('/') 
             if os.path.exists(filepath):
                 try:
-                    os.remove(filepath) # 尝试物理删除
+                    os.remove(filepath)
                 except Exception as file_err:
-                    # 修复点 2：即使文件删不掉（比如被占用），也只是打印警告，不让整个接口崩溃
-                    print(f"硬盘文件删除失败 (可能被占用): {file_err}")
+                    print(f"硬盘文件删除失败: {file_err}")
 
-        # 2. 执行 SQL 删除动作
         c.execute("DELETE FROM records WHERE id = ?", (record_id,))
         conn.commit()
         conn.close()
@@ -210,11 +207,10 @@ def delete_single_history(record_id):
         return jsonify({"status": "success", "message": f"记录 {record_id} 已成功删除"})
 
     except Exception as e:
-        # 修复点 3：如果发生任何未知恶性错误，捕获它并在后台终端打印出来
         print(f"后端删除接口发生致命崩溃: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/history/all', methods = ['DELETE'])
+@app.route('/history/all', methods=['DELETE'])
 def delete_all_history():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -225,7 +221,7 @@ def delete_all_history():
             os.remove(filepath)
             
     c.execute("DELETE FROM records")
-    c.execute("DELETE FROM sqlite_sequence WHERE name = 'records'")
+    c.execute("DELETE FROM sqlite_sequence WHERE name = 'records'") # 清空序列计数器
     
     conn.commit()
     conn.close()
@@ -233,4 +229,4 @@ def delete_all_history():
     return jsonify({"message": "已清空所有历史记录"}) 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000, use_reloader=False) # 关闭 reloader 防止线程被启动两次
+    app.run(debug=True, port=5000, use_reloader=False)
