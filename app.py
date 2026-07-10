@@ -1,5 +1,4 @@
 import os
-import cv2
 import sqlite3
 import threading
 import time
@@ -221,7 +220,10 @@ def delete_all_history():
             os.remove(filepath)
             
     c.execute("DELETE FROM records")
+    
+    '''
     c.execute("DELETE FROM sqlite_sequence WHERE name = 'records'") # 清空序列计数器
+    '''
     
     conn.commit()
     conn.close()
