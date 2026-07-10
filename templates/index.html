@@ -4,21 +4,83 @@
     <meta charset="UTF-8">
     <title>交通标识识别调度系统</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f5f7fa; padding: 20px; }
-        .container { max-width: 1000px; margin: auto; }
-        .card { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-        .btn { background: #3498db; color: white; border: none; padding: 8px 16px; border-radius: 5px; cursor: pointer; transition: opacity 0.2s; }
+        body {
+        font-family: 'Segoe UI',
+        sans-serif;
+        background: #f5f7fa;
+        padding: 20px; }
+
+        .container {
+        max-width: 1000px;
+        margin: auto; }
+
+        .card {
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+
+        .btn {
+        background: #3498db;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: opacity 0.2s; }
+
         .btn:hover { opacity: 0.85; }
-        .status-box { padding: 15px; background: #e8f4fd; border-left: 4px solid #3498db; border-radius: 4px; margin-top: 15px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        th, td { padding: 10px; border-bottom: 1px solid #ddd; text-align: left; }
+
+        .status-box {
+        padding: 15px;
+        background: #e8f4fd;
+        border-left: 4px solid #3498db;
+        border-radius: 4px;
+        margin-top: 15px; }
+
+        table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 15px; }
+
+        th, td {
+        padding: 10px;
+        border-bottom: 1px solid #ddd;
+        text-align: left; }
+
         th { background-color: #f8f9fa; }
-        img.thumb { width: 60px; height: 60px; object-fit: cover; border-radius: 4px; cursor: pointer; }
+
+        img.thumb {
+        width: 60px;
+        height: 60px;
+        object-fit: cover;
+        border-radius: 4px;
+        cursor: pointer; }
         
-        .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 15px; }
-        .toolbar input[type="text"] { padding: 8px; width: 250px; border: 1px solid #ccc; border-radius: 4px; outline: none; }
+        .toolbar { display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 15px; }
+
+        .toolbar input[type="text"] {
+        padding: 8px;
+        width: 250px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        outline: none; }
+
         .toolbar input[type="text"]:focus { border-color: #3498db; }
-        .spacer { flex-grow: 1; } 
+
+        .spacer { flex-grow: 1; }
+
+        #uploadHint{
+        color: #27ae60;
+        font-weight: bold;
+        margin-left: 10px;
+        opacity: 0;
+        transition: opacity 0.5s;}
     </style>
 </head>
 <body>
@@ -26,14 +88,12 @@
 <div class="container">
     <h2>🚦 交通标识批量识别调度系统</h2>
 
-    <!-- 1. 批量上传面板 -->
     <div class="card">
         <h3>批量导入图片入队</h3>
         <div class="toolbar">
-            <input type="file" id="batchInput" accept="image/*" multiple style="border: none; padding: 0;">
+            <input type="file" id="batchInput" accept="image/*">
             <button class="btn" onclick="submitBatch()">批量上传并加入队列</button>
-            <!-- 🚀 优化点 1：用渐隐提示文本取代原生 alert，彻底解除浏览器假死阻塞 -->
-            <span id="uploadHint" style="color: #27ae60; font-weight: bold; margin-left: 10px; opacity: 0; transition: opacity 0.5s;"></span>
+            <span id="uploadHint"></span>
         </div>
         
         <div class="status-box">
@@ -43,12 +103,10 @@
         </div>
     </div>
 
-    <!-- 2. 历史结果持久化查询面板 -->
     <div class="card">
         <h3>历史识别记录库</h3>
         
         <div class="toolbar">
-            <!-- 🚀 优化点 3：加入 oninput 和防抖触发，实现"边打字边搜索"的丝滑体验，抛弃回车键 -->
             <input type="text" id="searchInput" placeholder="输入标签名或文件名搜索..." oninput="debounceSearch()">
             <button class="btn" onclick="fetchHistory()">🔍 搜索</button>
             <button class="btn" onclick="showAll()" style="background:#95a5a6;">显示全部</button>
@@ -71,7 +129,6 @@
                 </tr>
             </thead>
             <tbody id="historyTableBody">
-                <!-- 数据由 JS 动态渲染 -->
             </tbody>
         </table>
     </div>
@@ -91,7 +148,7 @@
             const res = await fetch('/upload_batch', { method: 'POST', body: formData });
             const data = await res.json();
             
-            // 🚀 优化点 1：非阻塞提示，3秒后自动消失
+            // 非阻塞提示，3秒后自动消失
             const hint = document.getElementById('uploadHint');
             hint.innerText = data.message;
             hint.style.opacity = 1;
@@ -112,7 +169,7 @@
             document.getElementById('queueSize').innerText = data.queue_size;
             document.getElementById('currentTask').innerText = data.current_task ? data.current_task : "无";
             
-            // 🚀 优化点 2：修复双重并发请求。只要任务变化（且上个任务不为空），就精准刷新一次。
+            // 只要任务变化（且上个任务不为空），就精准刷新一次。
             if (window.lastTask !== undefined && window.lastTask !== data.current_task) {
                 if (window.lastTask !== null) {
                     fetchHistory();
@@ -125,7 +182,7 @@
         } catch (e) { console.error("状态获取失败", e); }
     }, 1000);
 
-    // 🚀 优化点 3：防抖搜索逻辑 (Debounce)
+    //防抖搜索逻辑
     let searchTimeout;
     function debounceSearch() {
         clearTimeout(searchTimeout);
