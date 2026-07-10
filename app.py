@@ -73,27 +73,6 @@ def save_to_db(filename, label, confidence, result_path):
     conn.commit()
     conn.close()
 
-# ==========================================
-# 核心业务逻辑与后台调度
-# ==========================================
-'''
-def mock_detect_and_annotate(input_path, filename):
-    """模拟检测功能（与之前一致，略作精简）"""
-    img = cv2.imread(input_path)
-    h, w, _ = img.shape
-    xmin, ymin = int(w * 0.25), int(h * 0.25)
-    xmax, ymax = int(w * 0.75), int(h * 0.75)
-    
-    cv2.rectangle(img, (xmin, ymin), (xmax, ymax), (0, 255, 0), 3)
-    label = "Speed Limit 50"
-    confidence = "98.5%"
-    cv2.putText(img, f"{label} {confidence}", (xmin, ymin - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-
-    output_path = os.path.join(app.config['OUTPUT_FOLDER'], filename)
-    cv2.imwrite(output_path, img)
-    return label, confidence, f"/{output_path}"
-
-'''
 def mock_detect_and_annotate(input_path,filename): # 模型适配，Line9 from Model.predict import detect_and_annotate
     output_path=os.path.join(app.config['OUTPUT_FOLDER'],filename)
     label,confidence=detect_and_annotate(input_path,output_path)
@@ -147,7 +126,7 @@ def upload_batch():
     enqueued_count = 0
     for file in files:
         if file:
-            filename = secure_filename(file.filename)
+            filename = file.filename
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(filepath)
             
@@ -169,8 +148,14 @@ def get_history():
     keyword = request.args.get('keyword', '')
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT id, filename, label, confidence, result_img_path, create_time FROM records WHERE filename LIKE ? OR label LIKE ? ORDER BY create_time DESC", 
-              (f'%{keyword}%', f'%{keyword}%'))
+    c.execute("""
+            SELECT id, filename, label, confidence,result_img_path,create_time 
+            FROM records 
+            WHERE id=? OR filename LIKE ? OR label LIKE ? 
+            ORDER BY create_time DESC
+            """,
+              (keyword,f'%{keyword}%', f'%{keyword}%')
+              )
     rows = c.fetchall()
     conn.close()
     
