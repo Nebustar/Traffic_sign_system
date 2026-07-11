@@ -8,10 +8,10 @@ from PIL import Image
 
 try:
     from .config import PATHS,TRAIN,CLASSIFIER,TWO_STAGE
-    from .classifier.model import build_transform,load_checkpoint
+    from .classifier.model import build_transform,load_checkpoint,select_device
 except ImportError:
     from config import PATHS,TRAIN,CLASSIFIER,TWO_STAGE
-    from classifier.model import build_transform,load_checkpoint
+    from classifier.model import build_transform,load_checkpoint,select_device
 from ultralytics import YOLO
 
 os.environ["YOLO_CONFIG_DIR"]=str(PATHS["Runs_dir"].parent/".cache"/"yolo")
@@ -31,7 +31,7 @@ def get_args():
     parser.add_argument("--source",type=str)
     parser.add_argument("--img_size",type=int)
     parser.add_argument("--conf",type=float)
-    parser.add_argument("--device",type=int,default=TRAIN["device"])
+    parser.add_argument("--device",type=str,default=TWO_STAGE["device"])
     parser.add_argument("--name",type=str)
     parser.add_argument("--save_txt",action="store_true")
 
@@ -62,7 +62,7 @@ def print_config(title,config):
 detector=YOLO(str(PATHS["Detector_model"]))
 classifier,classifier_checkpoint,torch_device=load_checkpoint(
     PATHS["Classifier_model"],
-    TWO_STAGE["device"],
+    "cpu",
 )
 
 class_names=classifier_checkpoint["class_names"]
@@ -70,6 +70,16 @@ classifier_transform=build_transform(
     classifier_checkpoint["imgsz"],
     train=False,
 )
+
+def set_runtime_device(device):
+    global torch_device
+
+    requested_device=select_device(device)
+    if requested_device!=torch_device:
+        classifier.to(requested_device)
+        torch_device=requested_device
+
+    return str(torch_device)
 
 '''
 def detect_and_annotate(input_path,output_path):
@@ -129,6 +139,8 @@ def detect_and_annotate(
 
     if device is None:
         device=TWO_STAGE["device"]
+
+    device=set_runtime_device(device)
 
     image=cv2.imread(str(input_path))
 

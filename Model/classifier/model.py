@@ -1,4 +1,5 @@
 import torch
+import warnings
 
 from pathlib import Path
 from torch import nn
@@ -8,17 +9,45 @@ IMAGENET_MEAN=(0.485,0.456,0.406)
 IMAGENET_STD=(0.229,0.224,0.225)
 
 def select_device(device):
-    device=str(device)
+    device="auto" if device is None else str(device).strip().lower()
+
+    if device=="auto":
+        if torch.cuda.is_available():
+            return torch.device("cuda:0")
+        return torch.device("cpu")
 
     if device=="cpu":
         return torch.device("cpu")
-    
+
+    if device in {"gpu","cuda"}:
+        device="0"
+
+    if device.startswith("cuda:"):
+        device=device.split(":",maxsplit=1)[1]
+
     if device.isdigit():
+        gpu_index=int(device)
         if not torch.cuda.is_available():
-            raise RuntimeError("Cuda is unavailable")
-        return torch.device(f"cuda:{device}")
-    
-    return torch.device(device)
+            warnings.warn(
+                "GPU was requested, but CUDA is unavailable. Using CPU instead.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            return torch.device("cpu")
+
+        if gpu_index>=torch.cuda.device_count():
+            warnings.warn(
+                f"GPU {gpu_index} is unavailable. Using CPU instead.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            return torch.device("cpu")
+
+        return torch.device(f"cuda:{gpu_index}")
+
+    raise ValueError(
+        "device must be auto, cpu, gpu, cuda, a GPU index, or cuda:<index>"
+    )
 
 def build_transform(img_size,train=False):
     operations=[

@@ -32,7 +32,7 @@ CLASSIFIER={
 TWO_STAGE={
     "detector_img_size":1280,
     "detector_conf":0.25,
-    "device":0,
+    "device":"auto",
 }
 
 TRAIN={
@@ -63,4 +63,3 @@ if __name__=="__main__":
     print("\nTRAIN:\n")
     for key,value in TRAIN.items():
         print(key,":",value)
-    
