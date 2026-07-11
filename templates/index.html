@@ -57,7 +57,7 @@
         object-fit: cover;
         border-radius: 4px;
         cursor: pointer; }
-        
+
         .toolbar { display: flex;
         gap: 10px;
         align-items: center;
@@ -81,6 +81,9 @@
         margin-left: 10px;
         opacity: 0;
         transition: opacity 0.5s;}
+        img.thumb { width: 60px; height: 60px; object-fit: cover; border-radius: 4px; cursor: pointer; }
+        .progress-container { background: #ecf0f1; border-radius: 5px; overflow: hidden; margin-top: 5px; }
+        .progress-bar { width: 0%; height: 20px; background: #2ecc71; transition: width 0.5s; }
     </style>
 </head>
 <body>
@@ -104,18 +107,46 @@
     </div>
 
     <div class="card">
-        <h3>历史识别记录库</h3>
-        
-        <div class="toolbar">
-            <input type="text" id="searchInput" placeholder="输入标签名或文件名搜索..." oninput="debounceSearch()">
-            <button class="btn" onclick="fetchHistory()">🔍 搜索</button>
-            <button class="btn" onclick="showAll()" style="background:#95a5a6;">显示全部</button>
-            
-            <div class="spacer"></div>
-            
-            <button class="btn" onclick="clearAllHistory()" style="background:#e74c3c;">🗑️ 一键清空所有</button>
+        <h3>2. 上传视频进行逐帧识别</h3>
+        <input type="file" id="videoInput" accept="video/*">
+        <button class="btn" onclick="submitVideo()">上传并处理视频</button>
+        <div id="videoProgress" style="margin-top:10px;display:none;">
+            <div class="progress-container">
+                <div id="videoProgressBar" class="progress-bar"></div>
+            </div>
+            <span id="videoProgressText">0%</span>
+            <span id="videoStatusText"></span>
         </div>
+    </div>
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <!-- ========== 历史记录卡片 ========== -->
+    <div class="card">
+        <h3>3. 历史识别记录库 (数据库持久化)</h3>
+        <input type="text" id="searchInput" placeholder="输入标签名或文件名搜索..." style="padding: 6px; width: 250px;">
+        <button class="btn" onclick="fetchHistory()">搜索历史</button>
+        <button class="btn" onclick="fetchHistory('')" style="background:#95a5a6;">显示全部</button>
+        <button class="btn" onclick="clearAllHistory()" style="background:#e74c3c; float: right;">一键清空所有</button>
         <table>
             <thead>
                 <tr>
@@ -125,7 +156,7 @@
                     <th>识别结果 (Label)</th>
                     <th>置信度</th>
                     <th>处理时间</th>
-                    <th>操作</th> 
+                    <th>操作</th>
                 </tr>
             </thead>
             <tbody id="historyTableBody">
@@ -147,38 +178,37 @@
         try {
             const res = await fetch('/upload_batch', { method: 'POST', body: formData });
             const data = await res.json();
-            
+
             // 非阻塞提示，3秒后自动消失
             const hint = document.getElementById('uploadHint');
             hint.innerText = data.message;
             hint.style.opacity = 1;
             setTimeout(() => { hint.style.opacity = 0; }, 3000);
-            
-            input.value = ""; 
+
+            input.value = "";
+            alert(data.message);
+            input.value = "";
         } catch (e) {
             alert("上传失败！");
         }
     }
 
-    // 状态轮询定时器
+    // 设置定时器，每 1 秒向后端请求一次队列状态
     setInterval(async () => {
         try {
             const res = await fetch('/queue_status');
             const data = await res.json();
             
             document.getElementById('queueSize').innerText = data.queue_size;
-            document.getElementById('currentTask').innerText = data.current_task ? data.current_task : "无";
+            document.getElementById('currentTask').innerText = data.current_task ? data.current_task : "无 (队列空闲)";
             
-            // 只要任务变化（且上个任务不为空），就精准刷新一次。
-            if (window.lastTask !== undefined && window.lastTask !== data.current_task) {
-                if (window.lastTask !== null) {
-                    fetchHistory();
-                }
+            // 如果刚从忙碌变成空闲，自动刷新一下历史记录列表
+            if (data.is_idle && window.lastStatusWasBusy) {
+                fetchHistory();
             }
-            
-            window.lastTask = data.current_task;
-            // （删除了多余的兜底逻辑，避免重复发送 /history 请求导致页面卡顿）
-            
+
+             window.lastStatusWasBusy = !data.is_idle;
+
         } catch (e) { console.error("状态获取失败", e); }
     }, 1000);
 
@@ -198,6 +228,7 @@
     }
 
     async function fetchHistory(forceKeyword) {
+        // 如果传入了参数就用参数，否则读取输入框的值
         const keyword = forceKeyword !== undefined ? forceKeyword : document.getElementById('searchInput').value;
         
         try {
@@ -205,7 +236,7 @@
             const data = await res.json();
             
             const tbody = document.getElementById('historyTableBody');
-            tbody.innerHTML = ""; 
+            tbody.innerHTML = ""; // 清空旧数据
 
             if(data.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;">暂无匹配的历史记录</td></tr>`;
@@ -235,11 +266,11 @@
 
     async function deleteRecord(id) {
         if (!confirm(`确定要删除 ID 为 ${id} 的这条记录吗？`)) return;
-        
+
         try {
             const res = await fetch(`/history/${id}`, { method: 'DELETE' });
             if (res.ok) {
-                fetchHistory(); 
+                fetchHistory();
             } else {
                 alert("删除失败！");
             }
@@ -250,7 +281,7 @@
 
     async function clearAllHistory() {
         if (!confirm("危险警告：确定要清空所有历史记录和图片吗？此操作不可恢复！")) return;
-        
+
         try {
             const res = await fetch('/history/all', { method: 'DELETE' });
             if (res.ok) {
@@ -262,6 +293,7 @@
         }
     }
 
+    // 页面加载完毕后，默认拉取一次历史记录
     window.onload = () => fetchHistory('');
 </script>
 
