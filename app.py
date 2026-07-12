@@ -200,24 +200,27 @@ def queue_worker():
                     label_str, conf_str = detect_and_annotate(input_path, output_path)
                     if label_str and label_str != "no detection":
                         labels_list = [l.strip() for l in label_str.split(',') if l.strip()]
-                        for lab in labels_list:
+                        conf_parts = [c.strip() for c in conf_str.split(',') if c.strip()]
+                        for lab, conf_part in zip(labels_list, conf_parts):
+                            # 提取分类置信度，lambda
+                            cls_match = re.search(r'cls:(\d+\.?\d*)%', conf_part)
+                            if cls_match:
+                                cls_conf = float(cls_match.group(1))
+                            else:
+                                all_percents = re.findall(r'(\d+\.?\d*)%', conf_part)
+                                cls_conf = float(all_percents[-1]) if all_percents else 0.0
+                            # 更新标签集合
                             video_tasks[task_id]['labels_set'].add(lab)
-
-                        # 使用正则提取置信度
-                        percentages = re.findall(r'(\d+\.?\d*)%', conf_str)
-                        if percentages:
-                            conf_values = [float(p) for p in percentages]
-                            current_frame_max_conf = max(conf_values)
-                            if current_frame_max_conf > video_tasks[task_id]['max_conf']:
-                                video_tasks[task_id]['max_conf'] = current_frame_max_conf
-
+                            # 更新该标签的最高置信度
+                            old_conf = video_tasks[task_id]['labels_conf'].get(lab, 0.0)
+                            if cls_conf > old_conf:
+                                video_tasks[task_id]['labels_conf'][lab] = cls_conf
                 except Exception as e:
                     cv2.imwrite(output_path, cv2.imread(input_path))
                     print(f'视频帧 {video_idx} 处理失败：{e}')
                 if task_id in video_tasks:
                     video_tasks[task_id]['processed_video'] += 1
                 current_processing_task = None
-
                 # 检查是不是每帧都处理完成
                 if task_id in video_tasks:
                     info = video_tasks[task_id]
@@ -241,10 +244,17 @@ def queue_worker():
                             for fpath in video_path:
                                 writer.append_data(imageio.imread(fpath))
                             writer.close()
+                        if info['labels_set']:
+                            video_label = ", ".join(sorted(info['labels_set']))                        
+                            conf_pairs = []
+                            for lab in sorted(info['labels_set']):
+                                conf = info['labels_conf'].get(lab, 0.0)
+                                conf_pairs.append(f"{lab}:{conf:.1f}%(最大)")
+                            video_conf = ", ".join(conf_pairs)
+                        else:
+                            video_label = "未检测到交通标志"
+                            video_conf = "0.0%"
 
-
-                        video_label = ", ".join(info['labels_set']) if info['labels_set'] else "未检测到交通标志"
-                        video_conf = f"{info['max_conf']:.1f}%(最大)" if info['max_conf'] > 0 else "0.0%"
                         original_name = info.get("original_filename", f"{task_id}.mp4")
                         save_to_db(
                             filename=original_name,
@@ -383,9 +393,9 @@ def upload_video():
         "status": "processing",
         "output_path": None,
         "fps": fps,
-        "labels_set": set(),  #所有标签
-        "max_conf": 0.0, #最大置信度
-        "original_filename": video_file.filename#原文件名要在html上显示
+        "labels_set": set(),
+        "labels_conf": {},  #每个标签最大置信度
+        "original_filename": video_file.filename
     }
 
     # 拆帧并入队
