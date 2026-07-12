@@ -82,13 +82,6 @@
         opacity: 0;
         transition: opacity 0.5s;}
 
-        img.thumb {
-        width: 60px;
-        height: 60px;
-        object-fit: cover;
-        border-radius: 4px;
-        cursor: pointer; }
-
         .progress-container {
         background: #ecf0f1;
         border-radius: 5px;
@@ -108,7 +101,7 @@
     <h2>🚦 交通标识批量识别调度系统</h2>
 
     <div class="card">
-        <h3>批量导入图片入队</h3>
+        <h3>1.批量导入图片入队</h3>
         <div class="toolbar">
             <input type="file" id="batchInput" accept="image/*" multiple style="border: none; padding: 0;">
             <button class="btn" onclick="submitBatch()">批量上传并加入队列</button>
@@ -123,7 +116,7 @@
     </div>
 
     <div class="card">
-        <h3>上传视频进行逐帧识别</h3>
+        <h3>2.上传视频进行逐帧识别</h3>
         <input type="file" id="videoInput" accept="video/*">
         <button class="btn" onclick="submitVideo()">上传并处理视频</button>
         <div id="videoProgress" style="margin-top:10px;display:none;">
@@ -134,13 +127,12 @@
             <span id="videoStatusText"></span>
         </div>
     </div>
-
-    <div class="card">
-        <h3>历史识别记录库</h3>
+ <div class="card">
+        <h3>3.历史识别记录库</h3>
         <input type="text" id="searchInput" placeholder="输入标签名或文件名搜索..." style="padding: 6px; width: 250px;">
         <button class="btn" onclick="fetchHistory()">搜索历史</button>
         <button class="btn" onclick="fetchHistory('')" style="background:#95a5a6;">显示全部</button>
-        <button class="btn" onclick="clearAllHistory()" style="background:#e74c3c; float: right;">一键清空所有</button>
+        <button class="btn" onclick="clearAllHistory()" style="background:#e74c3c; float: right">一键清空所有</button>
         <table>
             <thead>
                 <tr>
@@ -189,42 +181,73 @@
         }
     }
 
-    // 设置定时器，每 1 秒向后端请求一次队列状态
-    setInterval(async () => {
+async function submitVideo() {
+    const input = document.getElementById('videoInput');
+    if (!input.files.length) return alert("请选择视频文件！");
+
+    const formData = new FormData();
+    formData.append('video', input.files[0]);
+
+    try {
+        const res = await fetch('/upload_video', { method: 'POST', body: formData });
+        const data = await res.json();
+        const originalFilename = data.original_filename || data.task_id;  // 获取原始文件名
+        if (!res.ok) {
+            alert(data.error || "上传失败");
+            return;
+        }
+        alert(data.message);
+
+        // 显示进度条
+        document.getElementById('videoProgress').style.display = 'block';
+        const taskId = data.task_id;
+
+        // 轮询进度
+        const interval = setInterval(async () => {
+            try {
+                const statusRes = await fetch(`/video_status/${taskId}`);
+                const statusData = await statusRes.json();
+                if (statusData.error) {
+                    clearInterval(interval);
+                    return;
+                }
+                const progress = statusData.progress || 0;
+                document.getElementById('videoProgressBar').style.width = progress + '%';
+                // ===== 把文件名加到进度显示前面 =====
+                document.getElementById('videoProgressText').textContent =
+                    `${originalFilename}: ${statusData.processed_videos}/${statusData.total_videos} (${progress.toFixed(1)}%)`;
+                if (statusData.status === 'completed') {
+                    clearInterval(interval);
+                    document.getElementById('videoStatusText').innerHTML =
+                        `✅ 处理完成！<a href="${statusData.output_path}" target="_blank">下载视频</a>`;
+                    fetchHistory(); // 刷新历史记录
+                }
+            } catch (e) {
+                console.error("进度查询失败", e);
+            }
+        }, 2000);
+    } catch (e) {
+        alert("上传或处理出错：" + e.message);
+    }
+}
+
+   setInterval(async () => {
         try {
             const res = await fetch('/queue_status');
             const data = await res.json();
             
             document.getElementById('queueSize').innerText = data.queue_size;
-            document.getElementById('currentTask').innerText = data.current_task ? data.current_task : "无 (队列空闲)";
-            
-            // 如果刚从忙碌变成空闲，自动刷新一下历史记录列表
+            document.getElementById('currentTask').innerText = data.current_task ? data.current_task : "无 ";
+
             if (data.is_idle && window.lastStatusWasBusy) {
                 fetchHistory();
             }
-
-             window.lastStatusWasBusy = !data.is_idle;
-
+            window.lastStatusWasBusy = !data.is_idle;
+            
         } catch (e) { console.error("状态获取失败", e); }
     }, 1000);
 
-    //防抖搜索逻辑
-    let searchTimeout;
-    function debounceSearch() {
-        clearTimeout(searchTimeout);
-        // 停顿 300ms 后自动触发查询，既不会卡死服务器，又能做到实时响应
-        searchTimeout = setTimeout(() => {
-            fetchHistory();
-        }, 300);
-    }
-
-    function showAll() {
-        document.getElementById('searchInput').value = '';
-        fetchHistory('');
-    }
-
     async function fetchHistory(forceKeyword) {
-        // 如果传入了参数就用参数，否则读取输入框的值
         const keyword = forceKeyword !== undefined ? forceKeyword : document.getElementById('searchInput').value;
         
         try {
@@ -232,7 +255,7 @@
             const data = await res.json();
             
             const tbody = document.getElementById('historyTableBody');
-            tbody.innerHTML = ""; // 清空旧数据
+            tbody.innerHTML = "";
 
             if(data.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;">暂无匹配的历史记录</td></tr>`;
@@ -282,14 +305,13 @@
             const res = await fetch('/history/all', { method: 'DELETE' });
             if (res.ok) {
                 alert("已全部清空！");
-                showAll();
+                fetchHistory('');
             }
         } catch (e) {
             console.error("请求报错:", e);
         }
     }
 
-    // 页面加载完毕后，默认拉取一次历史记录
     window.onload = () => fetchHistory('');
 </script>
 
