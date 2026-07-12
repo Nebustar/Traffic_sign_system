@@ -81,9 +81,25 @@
         margin-left: 10px;
         opacity: 0;
         transition: opacity 0.5s;}
-        img.thumb { width: 60px; height: 60px; object-fit: cover; border-radius: 4px; cursor: pointer; }
-        .progress-container { background: #ecf0f1; border-radius: 5px; overflow: hidden; margin-top: 5px; }
-        .progress-bar { width: 0%; height: 20px; background: #2ecc71; transition: width 0.5s; }
+
+        img.thumb {
+        width: 60px;
+        height: 60px;
+        object-fit: cover;
+        border-radius: 4px;
+        cursor: pointer; }
+
+        .progress-container {
+        background: #ecf0f1;
+        border-radius: 5px;
+        overflow: hidden;
+        margin-top: 5px; }
+
+        .progress-bar {
+        width: 0%;
+        height: 20px;
+        background: #2ecc71;
+        transition: width 0.5s; }
     </style>
 </head>
 <body>
@@ -107,7 +123,7 @@
     </div>
 
     <div class="card">
-        <h3>2. 上传视频进行逐帧识别</h3>
+        <h3>上传视频进行逐帧识别</h3>
         <input type="file" id="videoInput" accept="video/*">
         <button class="btn" onclick="submitVideo()">上传并处理视频</button>
         <div id="videoProgress" style="margin-top:10px;display:none;">
@@ -119,30 +135,8 @@
         </div>
     </div>
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    <!-- ========== 历史记录卡片 ========== -->
     <div class="card">
-        <h3>3. 历史识别记录库 (数据库持久化)</h3>
+        <h3>历史识别记录库</h3>
         <input type="text" id="searchInput" placeholder="输入标签名或文件名搜索..." style="padding: 6px; width: 250px;">
         <button class="btn" onclick="fetchHistory()">搜索历史</button>
         <button class="btn" onclick="fetchHistory('')" style="background:#95a5a6;">显示全部</button>
@@ -179,7 +173,6 @@
             const res = await fetch('/upload_batch', { method: 'POST', body: formData });
             const data = await res.json();
 
-            // 非阻塞提示，3秒后自动消失
             const hint = document.getElementById('uploadHint');
             hint.innerText = data.message;
             hint.style.opacity = 1;
@@ -187,7 +180,7 @@
 
             input.value = "";
             alert(data.message);
-            input.value = "";
+
         } catch (e) {
             alert("上传失败！");
         }

@@ -8,20 +8,6 @@ from werkzeug.utils import secure_filename
 
 from Model.predict import detect_and_annotate
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import tempfile
 import shutil
 from moviepy import ImageSequenceClip
@@ -29,52 +15,13 @@ from moviepy import ImageSequenceClip
 
 video_tasks = {}  # 记录视频任务状态
 
-
-
-
-
-
-
-
-
-
-
-
-
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
 app.config['OUTPUT_FOLDER'] = 'static/outputs'
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
 
-
-
-
-
-
-
-
-
-
-
-
-
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500mb视频
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 # ==========================================
 # 考核点 2：手动实现基于队列的调度结构
