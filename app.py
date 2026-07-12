@@ -8,6 +8,7 @@ from werkzeug.utils import secure_filename
 
 from Model.predict import detect_and_annotate
 
+import  re
 import tempfile
 import shutil
 from moviepy import ImageSequenceClip
@@ -83,10 +84,34 @@ def save_to_db(filename, label, confidence, result_path):
     conn.commit()
     conn.close()
 
-def mock_detect_and_annotate(input_path,filename): # 模型适配，Line9 from Model.predict import detect_and_annotate
-    output_path=os.path.join(app.config['OUTPUT_FOLDER'],filename)
-    label,confidence=detect_and_annotate(input_path,output_path)
-    return label,confidence,f"/{output_path}"
+
+# ==========================================
+# 核心业务逻辑与后台调度
+# ==========================================
+'''
+def mock_detect_and_annotate(input_path, filename):
+    """模拟检测功能（与之前一致，略作精简）"""
+    img = cv2.imread(input_path)
+    h, w, _ = img.shape
+    xmin, ymin = int(w * 0.25), int(h * 0.25)
+    xmax, ymax = int(w * 0.75), int(h * 0.75)
+
+    cv2.rectangle(img, (xmin, ymin), (xmax, ymax), (0, 255, 0), 3)
+    label = "Speed Limit 50"
+    confidence = "98.5%"
+    cv2.putText(img, f"{label} {confidence}", (xmin, ymin - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+
+    output_path = os.path.join(app.config['OUTPUT_FOLDER'], filename)
+    cv2.imwrite(output_path, img)
+    return label, confidence, f"/{output_path}"
+
+'''
+
+
+def mock_detect_and_annotate(input_path, filename):  # 模型适配，Line9 from Model.predict import detect_and_annotate
+    output_path = os.path.join(app.config['OUTPUT_FOLDER'], filename)
+    label, confidence = detect_and_annotate(input_path, output_path)
+    return label, confidence, f"/{output_path}"
 
 def queue_worker():
     print("queue_worker 线程已启动！")
@@ -99,32 +124,35 @@ def queue_worker():
 
             if task.get("type") == "video":
                 task_id = task["task_id"]
-                video_idx = task["video_idx"]  #第几帧
+                video_idx = task["video_idx"]
                 input_path = task["input_path"]
                 output_path = task["output_path"]
                 current_processing_task = f"{task_id} 视频 {video_idx}"
                 try:
                     label_str, conf_str = detect_and_annotate(input_path, output_path)
                     if label_str and label_str != "no detection":
-                        # 记录当前这一帧的识别标签
                         labels_list = [l.strip() for l in label_str.split(',') if l.strip()]
-                        for lab in labels_list:
+                        conf_parts = [c.strip() for c in conf_str.split(',') if c.strip()]
+                        for lab, conf_part in zip(labels_list, conf_parts):
+                            # 提取分类置信度，lambda
+                            cls_match = re.search(r'cls:(\d+\.?\d*)%', conf_part)
+                            if cls_match:
+                                cls_conf = float(cls_match.group(1))
+                            else:
+                                all_percents = re.findall(r'(\d+\.?\d*)%', conf_part)
+                                cls_conf = float(all_percents[-1]) if all_percents else 0.0
+                            # 更新标签集合
                             video_tasks[task_id]['labels_set'].add(lab)
-                        confs = [float(c.strip().replace('%', '')) for c in conf_str.split(',') if c.strip()]
-                        if confs:
-                            current_frame_max_conf = max(confs)
-                            # 如果本帧的最大值大于全局最大值，更新全局最大值
-                            if current_frame_max_conf > video_tasks[task_id]['max_conf']:
-                                video_tasks[task_id]['max_conf'] = current_frame_max_conf
-
+                            # 更新该标签的最高置信度
+                            old_conf = video_tasks[task_id]['labels_conf'].get(lab, 0.0)
+                            if cls_conf > old_conf:
+                                video_tasks[task_id]['labels_conf'][lab] = cls_conf
                 except Exception as e:
                     cv2.imwrite(output_path, cv2.imread(input_path))
                     print(f'视频帧 {video_idx} 处理失败：{e}')
                 if task_id in video_tasks:
                     video_tasks[task_id]['processed_video'] += 1
-
                 current_processing_task = None
-
                 # 检查是不是每帧都处理完成
                 if task_id in video_tasks:
                     info = video_tasks[task_id]
@@ -148,10 +176,17 @@ def queue_worker():
                             for fpath in video_path:
                                 writer.append_data(imageio.imread(fpath))
                             writer.close()
+                        if info['labels_set']:
+                            video_label = ", ".join(sorted(info['labels_set']))
+                            conf_pairs = []
+                            for lab in sorted(info['labels_set']):
+                                conf = info['labels_conf'].get(lab, 0.0)
+                                conf_pairs.append(f"{lab}:{conf:.1f}%(最大)")
+                            video_conf = ", ".join(conf_pairs)
+                        else:
+                            video_label = "未检测到交通标志"
+                            video_conf = "0.0%"
 
-
-                        video_label = ", ".join(info['labels_set']) if info['labels_set'] else "未检测到交通标志"
-                        video_conf = f"{info['max_conf']:.1f}%(最大)" if info['max_conf'] > 0 else "0.0%"
                         original_name = info.get("original_filename", f"{task_id}.mp4")
                         save_to_db(
                             filename=original_name,
@@ -175,7 +210,7 @@ def queue_worker():
                 save_to_db(filename, label, conf, out_path)
                 current_processing_task = None
         else:
-            time.sleep(1) # 队列为空时休息1秒
+            time.sleep(1)
 
 # 在 Flask 启动前，初始化数据库并开启后台调度线程
 init_db()
@@ -315,34 +350,25 @@ def get_history():
         })
     return jsonify(results)
 
-@app.route('/history/<int:record_id>', methods=['DELETE'])
+@app.route('/history/<int:record_id>', methods = ['DELETE'])
 def delete_single_history(record_id):
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
 
-        c.execute("SELECT result_img_path FROM records WHERE id = ?", (record_id,))
-        row = c.fetchone()
+    c.execute("SELECT result_img_path FROM records WHERE id = ?", (record_id))
+    row = c.fetchone()
+    if row:
+        filepath = row[0].lstrip('/')
+        if os.path.exists(filepath):
+            os.remove(filepath)
 
-        if row and row[0]:
-            filepath = row[0].lstrip('/')
-            if os.path.exists(filepath):
-                try:
-                    os.remove(filepath)
-                except Exception as file_err:
-                    print(f"硬盘文件删除失败: {file_err}")
+    c.execute("DELETE FROM records WHERE id = ?", (record_id))
+    conn.commit()
+    conn.close()
 
-        c.execute("DELETE FROM records WHERE id = ?", (record_id,))
-        conn.commit()
-        conn.close()
+    return jsonify({"message": f"记录 {record_id} 已成功删除"})
 
-        return jsonify({"status": "success", "message": f"记录 {record_id} 已成功删除"})
-
-    except Exception as e:
-        print(f"后端删除接口发生致命崩溃: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-@app.route('/history/all', methods=['DELETE'])
+@app.route('/history/all', methods = ['DELETE'])
 def delete_all_history():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -354,7 +380,7 @@ def delete_all_history():
             
     c.execute("DELETE FROM records")
     c.execute("DELETE FROM sqlite_sequence WHERE name = 'records'")
-
+    
     conn.commit()
     conn.close()
     
