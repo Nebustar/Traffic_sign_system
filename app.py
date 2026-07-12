@@ -110,12 +110,23 @@ def queue_worker():
                         labels_list = [l.strip() for l in label_str.split(',') if l.strip()]
                         for lab in labels_list:
                             video_tasks[task_id]['labels_set'].add(lab)
-                        confs = [float(c.strip().replace('%', '')) for c in conf_str.split(',') if c.strip()]
-                        if confs:
-                            current_frame_max_conf = max(confs)
-                            # 如果本帧的最大值大于全局最大值，更新全局最大值
-                            if current_frame_max_conf > video_tasks[task_id]['max_conf']:
-                                video_tasks[task_id]['max_conf'] = current_frame_max_conf
+                        # 优化后的置信度解析逻辑
+                        try:
+                            import re  # 记得在 app.py 顶部导入 re 模块
+                            confs = []
+                            # 这里的 conf_str 看起来像 "det:85.6 cls:99.9"
+                            # 我们用正则表达式提取所有小数或整数
+                            all_numbers = re.findall(r"[-+]?\d*\.\d+|\d+", conf_str)
+                            
+                            for num_str in all_numbers:
+                                confs.append(float(num_str))
+                            
+                            if confs:
+                                current_frame_max_conf = max(confs)
+                                if current_frame_max_conf > video_tasks[task_id]['max_conf']:
+                                    video_tasks[task_id]['max_conf'] = current_frame_max_conf
+                        except Exception as parse_e:
+                            print(f"置信度数值解析失败 (已忽略): {parse_e}")
 
                 except Exception as e:
                     cv2.imwrite(output_path, cv2.imread(input_path))
