@@ -169,6 +169,9 @@
             formData.append('files', input.files[i]);
         }
 
+        // 新增这一行：强制标记为忙碌
+        window.lastStatusWasBusy = true;
+
         try {
             const res = await fetch('/upload_batch', { method: 'POST', body: formData });
             const data = await res.json();

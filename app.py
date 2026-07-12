@@ -171,9 +171,13 @@ def queue_worker():
                 filename = task['filename']
                 filepath = task['filepath']
                 current_processing_task = filename
-                label, conf, out_path = mock_detect_and_annotate(filepath, filename)
-                save_to_db(filename, label, conf, out_path)
-                current_processing_task = None
+                try:
+                    label, conf, out_path = mock_detect_and_annotate(filepath, filename)
+                    save_to_db(filename, label, conf, out_path)
+                except Exception as e:
+                    print(f"图片 {filename} 处理失败: {e}")
+                finally:
+                    current_processing_task = None
         else:
             time.sleep(1) # 队列为空时休息1秒
 
@@ -199,7 +203,7 @@ def upload_batch():
     enqueued_count = 0
     for file in files:
         if file:
-            filename = file.filename
+            filename = secure_filename(file.filename)
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(filepath)
             
@@ -300,7 +304,7 @@ def get_history():
             SELECT id, filename, label, confidence,result_img_path,create_time 
             FROM records 
             WHERE id=? OR filename LIKE ? OR label LIKE ? 
-            ORDER BY create_time DESC
+            ORDER BY id DESC
             """,
               (keyword,f'%{keyword}%', f'%{keyword}%')
               )
