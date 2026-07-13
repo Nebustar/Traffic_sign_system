@@ -181,57 +181,79 @@
         }
     }
 
-async function submitVideo() {
-    const input = document.getElementById('videoInput');
-    if (!input.files.length) return alert("请选择视频文件！");
+    // 新增：视频轮询定时器变量
+    let videoPollingInterval = null;
 
-    const formData = new FormData();
-    formData.append('video', input.files[0]);
+    // 新增：提交视频的主函数
+    async function submitVideo() {
+        const input = document.getElementById('videoInput');
+        if (input.files.length === 0) return alert("请先选择一个视频文件！");
 
-    try {
-        const res = await fetch('/upload_video', { method: 'POST', body: formData });
-        const data = await res.json();
-        const originalFilename = data.original_filename || data.task_id;  // 获取原始文件名
-        if (!res.ok) {
-            alert(data.error || "上传失败");
-            return;
-        }
-        alert(data.message);
+        const formData = new FormData();
+        formData.append('video', input.files[0]);
 
-        // 显示进度条
+        // 1. 初始化并显示进度条界面
         document.getElementById('videoProgress').style.display = 'block';
-        const taskId = data.task_id;
+        document.getElementById('videoStatusText').innerText = '正在上传并拆帧 (视频较大请耐心等待)...';
+        document.getElementById('videoProgressBar').style.width = '0%';
+        document.getElementById('videoProgressText').innerText = '0%';
 
-        // 轮询进度
-        const interval = setInterval(async () => {
-            try {
-                const statusRes = await fetch(`/video_status/${taskId}`);
-                const statusData = await statusRes.json();
-                if (statusData.error) {
-                    clearInterval(interval);
-                    return;
-                }
-                const progress = statusData.progress || 0;
-                document.getElementById('videoProgressBar').style.width = progress + '%';
-                // ===== 把文件名加到进度显示前面 =====
-                document.getElementById('videoProgressText').textContent =
-                    `${originalFilename}: ${statusData.processed_videos}/${statusData.total_videos} (${progress.toFixed(1)}%)`;
-                if (statusData.status === 'completed') {
-                    clearInterval(interval);
-                    document.getElementById('videoStatusText').innerHTML =
-                        `✅ 处理完成！<a href="${statusData.output_path}" target="_blank">下载视频</a>`;
-                    fetchHistory(); // 刷新历史记录
-                }
-            } catch (e) {
-                console.error("进度查询失败", e);
+        try {
+            // 2. 发送视频到后端
+            const res = await fetch('/upload_video', { method: 'POST', body: formData });
+            const data = await res.json();
+            
+            if (data.error) {
+                alert(data.error);
+                return;
             }
-        }, 2000);
-    } catch (e) {
-        alert("上传或处理出错：" + e.message);
-    }
-}
 
-   setInterval(async () => {
+            // 3. 上传成功，清空文件选择框
+            input.value = "";
+            document.getElementById('videoStatusText').innerText = '已加入队列，准备处理...';
+            
+            // 4. 获取任务ID，开始每秒轮询进度
+            const taskId = data.task_id;
+            if (videoPollingInterval) clearInterval(videoPollingInterval);
+            
+            videoPollingInterval = setInterval(() => checkVideoStatus(taskId), 1000);
+
+        } catch (e) {
+            alert("视频上传失败，可能是文件过大或网络断开！");
+            console.error(e);
+        }
+    }
+
+    // 新增：查询视频进度的辅助函数
+    async function checkVideoStatus(taskId) {
+        try {
+            const res = await fetch(`/video_status/${taskId}`);
+            const data = await res.json();
+            
+            if (data.error) return;
+
+            // 更新进度条和文字
+            const progress = data.progress.toFixed(1);
+            document.getElementById('videoProgressBar').style.width = `${progress}%`;
+            document.getElementById('videoProgressText').innerText = `${progress}%`;
+            document.getElementById('videoStatusText').innerText = `(处理中: ${data.processed_videos} / ${data.total_videos} 帧)`;
+
+            // 如果后端返回状态为 completed，说明视频合成完毕
+            if (data.status === 'completed') {
+                clearInterval(videoPollingInterval); // 停止轮询
+                document.getElementById('videoStatusText').innerText = '✅ 处理合成完毕！';
+                
+                // 强制刷新历史记录表格，展示新视频
+                window.lastStatusWasBusy = true; 
+                fetchHistory(); 
+            }
+        } catch (e) {
+            console.error("获取视频进度失败", e);
+        }
+    }
+
+    // 设置定时器，每 1 秒向后端请求一次队列状态
+    setInterval(async () => {
         try {
             const res = await fetch('/queue_status');
             const data = await res.json();
