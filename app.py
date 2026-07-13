@@ -7,7 +7,7 @@ from flask import Flask, render_template, request, jsonify
 from werkzeug.utils import secure_filename
 
 from Model.predict import detect_and_annotate
-
+import re  
 import tempfile
 import shutil
 from moviepy import ImageSequenceClip
@@ -138,7 +138,6 @@ def queue_worker():
                             video_tasks[task_id]['labels_set'].add(lab)
                         # 优化后的置信度解析逻辑
                         try:
-                            import re  # 记得在 app.py 顶部导入 re 模块
                             confs = []
                             # 这里的 conf_str 看起来像 "det:85.6 cls:99.9"
                             # 我们用正则表达式提取所有小数或整数
