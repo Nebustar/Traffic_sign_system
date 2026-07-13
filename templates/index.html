@@ -107,12 +107,6 @@
             <button class="btn" onclick="submitBatch()">批量上传并处理</button>
             <span id="uploadHint"></span>
         </div>
-
-        <div class="status-box">
-            <h4>🔄 队列调度状态</h4>
-            <p>处理中的任务: <strong id="currentTask" style="color: #e74c3c;">无</strong></p>
-            <p>剩余任务数: <strong id="queueSize">0</strong></p>
-        </div>
     </div>
 
     <div class="card">
@@ -127,28 +121,37 @@
             <span id="videoStatusText"></span>
         </div>
     </div>
- <div class="card">
-        <h3>历史识别记录库</h3>
-        <input type="text" id="searchInput" placeholder="输入标签名或文件名搜索..." style="padding: 6px; width: 250px;">
-        <button class="btn" onclick="fetchHistory()">搜索历史</button>
-        <button class="btn" onclick="fetchHistory('')" style="background:#95a5a6;">显示全部</button>
-        <button class="btn" onclick="clearAllHistory()" style="background:#e74c3c; float: right">一键清空历史记录</button>
-        <table>
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>缩略图</th>
-                    <th>原文件名</th>
-                    <th>识别结果</th>
-                    <th>置信度</th>
-                    <th>处理时间</th>
-                    <th>操作</th>
-                </tr>
-            </thead>
-            <tbody id="historyTableBody">
-            </tbody>
-        </table>
+
+    <div class="card">
+        <div class="status-box">
+            <h4>🔄 队列调度状态</h4>
+            <p>处理中的任务: <strong id="currentTask" style="color: #e74c3c;">无</strong></p>
+            <p>剩余任务数: <strong id="queueSize">0</strong></p>
+        </div>
     </div>
+
+    <div class="card">
+            <h3>历史识别记录库</h3>
+            <input type="text" id="searchInput" placeholder="输入标签名或文件名搜索..." style="padding: 6px; width: 250px;">
+            <button class="btn" onclick="fetchHistory()">搜索历史</button>
+            <button class="btn" onclick="fetchHistory('')" style="background:#95a5a6;">显示全部</button>
+            <button class="btn" onclick="clearAllHistory()" style="background:#e74c3c; float: right">一键清空历史记录</button>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>处理结果</th>
+                        <th>原文件名</th>
+                        <th>识别结果</th>
+                        <th>置信度</th>
+                        <th>处理时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="historyTableBody">
+                </tbody>
+            </table>
+     </div>
 </div>
 
 <script>
@@ -285,13 +288,26 @@
             }
 
             data.forEach(item => {
+                // 判断是否为视频文件
+                const isVideo = item.result_img_path.toLowerCase().endsWith('.mp4');
+                
+                // 根据类型生成不同的缩略图 UI
+                const mediaContent = isVideo 
+                    ? `<a href="${item.result_img_path}" target="_blank" style="text-decoration: none;">
+                         <div style="width: 60px; height: 60px; background: #2c3e50; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: 0.2s;" onmouseover="this.style.background='#34495e'" onmouseout="this.style.background='#2c3e50'" title="点击播放视频">
+                           <span style="font-size: 20px;">🎬</span>
+                           <span style="font-size: 10px; margin-top: 2px;">视频</span>
+                         </div>
+                       </a>`
+                    : `<a href="${item.result_img_path}" target="_blank">
+                         <img src="${item.result_img_path}" class="thumb" alt="result">
+                       </a>`;
+
+                // 渲染到表格行中（替换掉原本的 <img> 标签）
                 tbody.innerHTML += `
                     <tr>
                         <td>${item.id}</td>
-                        <td><a href="${item.result_img_path}" target="_blank">
-                                <img src="${item.result_img_path}" class="thumb" alt="result">
-                            </a>
-                        </td>
+                        <td>${mediaContent}</td>
                         <td>${item.filename}</td>
                         <td style="font-weight:bold;">${item.label}</td>
                         <td>${item.confidence}</td>

@@ -403,7 +403,7 @@ def video_status(task_id):
         progress = 33 + frame_progress * 33
     elif phase == "rendering":
         render_progress = info.get("render_progress", 0.0)
-        progress = 66 + render_progress * 33
+        progress = 67 + render_progress * 33
     else:
         progress = 100
     progress = min(progress, 100)
