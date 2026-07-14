@@ -169,7 +169,7 @@ def detect_and_annotate(
             image,
             (xmin,ymin),
             (xmax,ymax),
-            (0,255,0),
+            (0, 0, 255),
             2,
         )
 
@@ -179,7 +179,7 @@ def detect_and_annotate(
             (xmin,max(ymin-10,20)),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.6,
-            (0,255,0),
+            (0, 0, 255),
             2,
         )
 
